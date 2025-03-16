@@ -7,7 +7,7 @@ from supabase import create_client, Client
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List
 
-# Load API key from .env file
+# Load environment variables from .env file (for local development)
 load_dotenv()
 
 # OpenAI API Key
@@ -16,6 +16,10 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 # Supabase Credentials
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+# Ensure all required environment variables are set
+if not openai.api_key or not SUPABASE_URL or not SUPABASE_KEY:
+    raise ValueError("Missing required environment variables. Check your .env file or Render settings.")
 
 # Connect to Supabase
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -84,4 +88,11 @@ def get_financial_advice(input_data: UserInput):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# Get dynamic port for Render deployment
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))  # Default to 8000 if PORT is not set
+    uvicorn.run(app, host="0.0.0.0", port=port)
+
 
