@@ -11,7 +11,7 @@ app = FastAPI()
 from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Allow all domains for testing
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -52,27 +52,34 @@ def generate_pdf(data: FinancialInfo):
     elif data.investment_preference == "Aggressive":
         pdf.cell(200, 10, "- Higher exposure to Stocks and Crypto", ln=True)
 
-    file_path = f"{data.name.replace(' ', '_')}_Financial_Plan.pdf"
-    pdf.output(file_path)
-    return file_path
+    file_name = f"{data.name.replace(' ', '_')}_Financial_Plan.pdf"
+    pdf_path = f"/tmp/{file_name}"  # Render allows file writing in /tmp/
+    pdf.output(pdf_path)
+    return file_name, pdf_path
 
 # API Endpoint to generate the financial plan
 @app.post("/generate_plan")
 def generate_plan(financial_data: FinancialInfo):
     try:
-        pdf_path = generate_pdf(financial_data)
-        return {"pdf_url": f"https://paraclete.onrender.com/download/{pdf_path}"}
+        file_name, pdf_path = generate_pdf(financial_data)
+        return {"pdf_url": f"https://paraclete.onrender.com/download/{file_name}"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 # API Endpoint to serve PDF files
 @app.get("/download/{pdf_name}")
 def download_pdf(pdf_name: str):
-    file_path = f"./{pdf_name}"
+    file_path = f"/tmp/{pdf_name}"
     if os.path.exists(file_path):
         return FileResponse(file_path, media_type='application/pdf', filename=pdf_name)
     else:
         raise HTTPException(status_code=404, detail="File not found")
+
+# Start the app
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
 
 
 
