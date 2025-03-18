@@ -7,7 +7,6 @@ import os
 
 # Load environment variables
 from dotenv import load_dotenv
-
 load_dotenv()
 
 # Initialize FastAPI app
@@ -36,11 +35,11 @@ def read_root():
 @app.post("/ask")
 def get_financial_advice(user_input: UserInput):
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-4",
             messages=[{"role": "user", "content": user_input.question}]
         )
-        return {"response": response["choices"][0]["message"]["content"]}
+        return {"response": response.choices[0].message.content}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -79,6 +78,7 @@ def generate_plan(financial_data: FinancialInfo):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 
