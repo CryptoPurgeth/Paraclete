@@ -35,18 +35,17 @@ def read_root():
 @app.post("/ask")
 def get_financial_advice(user_input: UserInput):
     try:
-        response = openai.chat.completions.create(
+        response = openai.ChatCompletion.create(  # ✅ Fixed method
             model="gpt-4",
             messages=[{"role": "user", "content": user_input.question}]
         )
-        return {"response": response.choices[0].message.content}
+        return {"response": response["choices"][0]["message"]["content"]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/generate_plan")
 def generate_plan(financial_data: FinancialInfo):
     try:
-        # Generate a financial summary based on inputs
         summary = f"""
         Financial Plan for {financial_data.name}
         -----------------------------------------
@@ -63,14 +62,12 @@ def generate_plan(financial_data: FinancialInfo):
         - Consider passive income options like REITs or dividend stocks.
         """
 
-        # Create a PDF document
         pdf = FPDF()
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
         pdf.set_font("Arial", size=12)
         pdf.multi_cell(0, 10, summary)
 
-        # Save PDF
         pdf_path = "financial_plan.pdf"
         pdf.output(pdf_path)
 
@@ -78,6 +75,7 @@ def generate_plan(financial_data: FinancialInfo):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 
