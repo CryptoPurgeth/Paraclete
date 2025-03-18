@@ -1,87 +1,92 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import openai
-import os
 from fpdf import FPDF
 from fastapi.responses import FileResponse
-import uuid
+import os
 
+# Load environment variables
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Initialize FastAPI app
 app = FastAPI()
 
-# Load OpenAI API key from environment variable
+# OpenAI API Key
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Request model for chat
+# Define input model
 class UserInput(BaseModel):
     session_id: str
     question: str
 
-# Request model for financial plan generation
 class FinancialInfo(BaseModel):
     name: str
     age: int
     marital_status: str
-    income: float
+    income: int
     investment_preference: str
     retirement_age: int
 
+@app.get("/")
+def read_root():
+    return {"message": "Welcome to the Paraclete AI API"}
+
 @app.post("/ask")
-async def get_financial_advice(user_input: UserInput):
-    """Handles user questions and returns AI-generated financial advice"""
+def get_financial_advice(user_input: UserInput):
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[{"role": "user", "content": user_input.question}]
         )
-        
-        answer = response["choices"][0]["message"]["content"]
-        return {"answer": answer}
-
+        return {"response": response["choices"][0]["message"]["content"]}
     except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/generate_plan")
-async def generate_plan(financial_data: FinancialInfo):
-    """Generates a financial plan PDF based on user input"""
+def generate_plan(financial_data: FinancialInfo):
     try:
-        # Create the financial plan text using OpenAI
-        prompt = f"""
-        Generate a comprehensive financial plan for {financial_data.name}, who is {financial_data.age} years old,
-        {financial_data.marital_status}, earning ${financial_data.income} annually, with an investment preference
-        of {financial_data.investment_preference}. Their target retirement age is {financial_data.retirement_age}.
+        # Generate a financial summary based on inputs
+        summary = f"""
+        Financial Plan for {financial_data.name}
+        -----------------------------------------
+        - Age: {financial_data.age}
+        - Marital Status: {financial_data.marital_status}
+        - Income: ${financial_data.income}
+        - Investment Preference: {financial_data.investment_preference}
+        - Retirement Age: {financial_data.retirement_age}
+
+        Recommended Strategy:
+        - Diversified investment portfolio including stocks, bonds, and ETFs.
+        - Maintain an emergency fund covering 6 months of expenses.
+        - Maximize tax-advantaged retirement contributions.
+        - Consider passive income options like REITs or dividend stocks.
         """
-        
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        
-        plan_text = response["choices"][0]["message"]["content"]
-        
-        # Generate PDF
+
+        # Create a PDF document
         pdf = FPDF()
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
-        pdf.set_font("Arial", style='', size=12)
-        pdf.multi_cell(0, 10, plan_text)
+        pdf.set_font("Arial", size=12)
+        pdf.multi_cell(0, 10, summary)
 
-        # Save PDF file
-        filename = f"financial_plan_{uuid.uuid4().hex}.pdf"
-        filepath = f"/tmp/{filename}"
-        pdf.output(filepath)
+        # Save PDF
+        pdf_path = "financial_plan.pdf"
+        pdf.output(pdf_path)
 
-        return FileResponse(filepath, media_type="application/pdf", filename="Financial_Plan.pdf")
+        return FileResponse(pdf_path, media_type="application/pdf", filename="financial_plan.pdf")
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/")
-def read_root():
-    return {"message": "Welcome to Paraclete Financial AI"}
 
-@app.get("/health")
-def health_check():
-    return {"status": "ok"}
+
+
+
+
+
+
 
 
 
