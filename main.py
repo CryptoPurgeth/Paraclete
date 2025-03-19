@@ -7,29 +7,35 @@ import pdfkit
 import os
 from dotenv import load_dotenv
 
-# ----------------- Load environment variables -----------------
+# -----------------------------
+# Load environment variables
+# -----------------------------
 load_dotenv()
 
-# ----------------- Create FastAPI app -----------------
 app = FastAPI()
 
-# ----------------- CORS Middleware (to allow Wix) -----------------
-# For security, replace "*" with your Wix domain if you want to restrict origins.
+# -----------------------------
+# CORS Middleware
+# -----------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # For stricter security, replace "*" with your Wix domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ----------------- OpenAI Setup -----------------
+# -----------------------------
+# OpenAI Setup
+# -----------------------------
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
-    raise ValueError("OpenAI API Key not found. Check your .env or environment variables.")
+    raise ValueError("OpenAI API key not found. Check your .env or environment variables.")
 openai.api_key = OPENAI_API_KEY
 
-# ----------------- Data Models -----------------
+# -----------------------------
+# Data Models
+# -----------------------------
 class UserInput(BaseModel):
     session_id: str
     question: str
@@ -43,73 +49,96 @@ class FinancialPlanRequest(BaseModel):
     investment_preference: str
     retirement_age: int
 
-# ----------------- Root Endpoint -----------------
+# -----------------------------
+# Root Endpoint
+# -----------------------------
 @app.get("/")
 def read_root():
     return {"message": "Welcome to Paraclete AI"}
 
-# ----------------- /ask Endpoint -----------------
+# -----------------------------
+# /ask endpoint
+# -----------------------------
 @app.post("/ask")
 def get_financial_advice(user_input: UserInput):
     """
-    Receives a user question, calls OpenAI for a short chat response, returns { "response": "..." }
+    Receives a question (from Wix chat), sends it to GPT, returns short AI response.
+    Expects JSON: { "session_id": "...", "question": "..." }
+    Returns: { "response": "..." }
     """
     try:
-        # Example using GPT-4. If not available, switch to "gpt-3.5-turbo".
         response = openai.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4",  # or "gpt-3.5-turbo"
             messages=[{"role": "user", "content": user_input.question}],
             max_tokens=150
         )
-        ai_text = response.choices[0].message.content
+        ai_text = response.choices[0].message.content.strip()
         return {"response": ai_text}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ----------------- /generate_plan Endpoint -----------------
+# -----------------------------
+# /generate_plan endpoint
+# -----------------------------
 @app.post("/generate_plan")
 def generate_plan(data: FinancialPlanRequest):
     """
-    Generates a detailed financial plan with AI recommendations, returns a PDF file.
+    Generates a detailed, personalized financial plan (PDF) using GPT's recommendations.
+    Expects JSON: {
+      "session_id": "...",
+      "name": "...",
+      "age": ...,
+      "marital_status": "...",
+      "income": ...,
+      "investment_preference": "...",
+      "retirement_age": ...
+    }
+    Returns: A downloadable PDF file.
     """
     try:
-        # 1) Build a prompt with user info
+        # Build a robust prompt for GPT
         ai_prompt = (
-            f"Create a detailed financial plan for {data.name}, "
-            f"who is {data.age} years old, {data.marital_status}, "
-            f"with an annual income of {data.income}, preferring {data.investment_preference} investments, "
-            f"and planning to retire at {data.retirement_age}. "
-            "Provide step-by-step savings, investing, and retirement strategies."
+            f"Please create a thorough, step-by-step financial roadmap for {data.name}, "
+            f"age {data.age}, {data.marital_status}, "
+            f"who earns ${data.income:,.2f} annually, prefers {data.investment_preference} investments, "
+            f"and plans to retire at {data.retirement_age}. "
+            "Include budgeting, saving, investing, and retirement strategies. "
+            "Approximate monthly contributions if possible, highlight potential pitfalls, "
+            "and outline realistic steps to achieve these goals."
         )
 
-        # 2) Get AI recommendations from OpenAI
+        # GPT call
         ai_response = openai.chat.completions.create(
             model="gpt-4",  # or "gpt-3.5-turbo"
             messages=[{"role": "user", "content": ai_prompt}],
-            max_tokens=500
+            max_tokens=1000,    # Enough tokens for a detailed response
+            temperature=0.7     # Adjust if you want more or less creativity
         )
-        recommendations = ai_response.choices[0].message.content
+        recommendations = ai_response.choices[0].message.content.strip()
 
-        # 3) Combine user info + AI text into an HTML string
+        # Combine user data + GPT text into HTML
         plan_html = f"""
-        <h1 style="text-align:center;">Financial Plan for {data.name}</h1>
+        <h1 style="text-align:center;">Detailed Financial Plan for {data.name}</h1>
         <p><strong>Age:</strong> {data.age}</p>
         <p><strong>Marital Status:</strong> {data.marital_status}</p>
         <p><strong>Annual Income:</strong> ${data.income:,.2f}</p>
         <p><strong>Investment Preference:</strong> {data.investment_preference}</p>
-        <p><strong>Retirement Age:</strong> {data.retirement_age}</p>
+        <p><strong>Planned Retirement Age:</strong> {data.retirement_age}</p>
         <hr>
-        <h2 style="color:#444;">AI Recommendations</h2>
+        <h2 style="color:#444;">AI Roadmap & Recommendations</h2>
         <p>{recommendations}</p>
         <hr>
-        <p><em>This plan is for informational purposes. For personalized advice, consult a licensed financial advisor.</em></p>
+        <p style="font-style:italic;">
+          Disclaimer: This plan is informational. For personal advice, consult a licensed professional.
+        </p>
         """
 
-        # 4) Convert HTML to PDF using pdfkit
+        # Convert HTML to PDF
         pdf_filename = f"{data.session_id}_financial_plan.pdf"
         pdfkit.from_string(plan_html, pdf_filename)
 
-        # 5) Return the generated PDF
+        # Return the PDF file
         return FileResponse(
             pdf_filename,
             media_type="application/pdf",
@@ -118,6 +147,7 @@ def generate_plan(data: FinancialPlanRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 
