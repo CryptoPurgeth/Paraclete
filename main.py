@@ -1,29 +1,38 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import openai
+import pdfkit
 import os
 from dotenv import load_dotenv
-from fastapi.responses import FileResponse
-import pdfkit
 
-# Load environment variables
+# Load environment variables (OpenAI key, etc.)
 load_dotenv()
 
 app = FastAPI()
 
-# Ensure OpenAI API key is set
+# ----------------- CORS Middleware -----------------
+# Allow requests from any origin (Wix front-end)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # or ["https://your-wix-domain.com"] for stricter security
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ----------------- OpenAI Setup -----------------
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
-    raise ValueError("OpenAI API key is missing. Please check your .env file.")
-
+    raise ValueError("OpenAI API Key not found. Check your .env file or environment variables.")
 openai.api_key = OPENAI_API_KEY
 
-# Request model for AI chat
+# ----------------- Models -----------------
 class UserInput(BaseModel):
     session_id: str
     question: str
 
-# Request model for financial plan
 class FinancialPlanRequest(BaseModel):
     session_id: str
     name: str
@@ -33,56 +42,67 @@ class FinancialPlanRequest(BaseModel):
     investment_preference: str
     retirement_age: int
 
+# ----------------- Root Endpoint -----------------
 @app.get("/")
-async def root():
+def read_root():
     return {"message": "Welcome to Paraclete AI"}
 
+# ----------------- /ask Endpoint (AI Chat) -----------------
 @app.post("/ask")
-async def get_financial_advice(user_input: UserInput):
-    """Handles AI financial advice chat interaction."""
+def get_financial_advice(user_input: UserInput):
+    """
+    Receives a question from Wix, sends it to OpenAI, and returns an AI response.
+    Expects JSON: { "session_id": "...", "question": "..." }
+    Returns JSON: { "response": "AI answer" }
+    """
     try:
+        # Create chat completion with GPT-4 or gpt-3.5-turbo
         response = openai.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4",  # or "gpt-3.5-turbo" if your plan doesn't have GPT-4
             messages=[{"role": "user", "content": user_input.question}],
-            max_tokens=200
+            max_tokens=150
         )
-        return {"response": response.choices[0].message.content}
+        ai_text = response.choices[0].message.content
+        return {"response": ai_text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ----------------- /generate_plan Endpoint (PDF) -----------------
 @app.post("/generate_plan")
-async def generate_financial_plan(data: FinancialPlanRequest):
-    """Generates a PDF financial plan based on user input."""
+def generate_plan(data: FinancialPlanRequest):
+    """
+    Generates a financial plan PDF based on user input and returns it.
+    Expects JSON with fields:
+      session_id, name, age, marital_status, income, investment_preference, retirement_age
+    Returns a downloadable PDF file.
+    """
     try:
-        pdf_content = f"""
-        <h1>Personalized Financial Plan</h1>
-        <p><strong>Name:</strong> {data.name}</p>
+        # Create a simple HTML plan
+        plan_html = f"""
+        <h1>Financial Plan for {data.name}</h1>
         <p><strong>Age:</strong> {data.age}</p>
         <p><strong>Marital Status:</strong> {data.marital_status}</p>
-        <p><strong>Income:</strong> ${data.income}</p>
+        <p><strong>Annual Income:</strong> ${data.income:,.2f}</p>
         <p><strong>Investment Preference:</strong> {data.investment_preference}</p>
-        <p><strong>Retirement Age:</strong> {data.retirement_age}</p>
-        <h2>AI Recommendations:</h2>
+        <p><strong>Planned Retirement Age:</strong> {data.retirement_age}</p>
+        <hr>
+        <p>This basic plan outlines some initial steps. For a more detailed strategy,
+           consider scheduling a consultation with a licensed advisor.</p>
         """
 
-        # Generate AI advice for plan
-        response = openai.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "user", "content": f"Create a detailed financial plan for someone who is {data.age} years old, earns {data.income}, prefers {data.investment_preference} investments, and wants to retire at {data.retirement_age}."}
-            ],
-            max_tokens=500
-        )
-        pdf_content += f"<p>{response.choices[0].message.content}</p>"
-
-        # Save PDF
+        # Convert HTML to PDF
         pdf_filename = f"{data.session_id}_financial_plan.pdf"
-        pdfkit.from_string(pdf_content, pdf_filename)
+        pdfkit.from_string(plan_html, pdf_filename)
 
-        return FileResponse(pdf_filename, filename="financial_plan.pdf", media_type="application/pdf")
-
+        # Return the PDF file
+        return FileResponse(
+            pdf_filename,
+            media_type="application/pdf",
+            filename="financial_plan.pdf"
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 
